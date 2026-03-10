@@ -16,6 +16,15 @@
 #define PORT "3490"
 #define BACKLOG 10
 #define MAXEVENTS 64
+#define MAX_CONNECTIONS 500
+
+void close_client(int fd, int *connections) {
+    (*connections)--;
+
+	if (*connections < 0) *connections = 0;
+
+    close(fd);
+}
 
 // Helper function to make a socket non-blocking
 int set_nonblocking(int fd) {
@@ -107,6 +116,8 @@ int main() {
 
     memset(client_states, 0, sizeof(client_states));
 
+    int active_connections = 0;
+
     printf("server: waiting for connections via epoll...\n");
 
     // 3. The Event Loop
@@ -117,7 +128,10 @@ int main() {
             
             if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
                 fprintf(stderr, "epoll error\n");
-                close(events[i].data.fd);
+                if (events[i].data.fd != sockfd)
+                    close_client(events[i].data.fd, &active_connections);
+                else
+                    close(events[i].data.fd);
                 continue;
             }
 
@@ -139,6 +153,13 @@ int main() {
                     inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
                     printf("server: got connection from %s\n", s);
 
+                    if (active_connections >= MAX_CONNECTIONS) {
+                        char *response = "HTTP/1.1 529 Too Many Requests\r\nConnection: close\r\n\r\n";
+                        send(new_fd, response, strlen(response), 0);
+                        close(new_fd);
+                        continue;
+                    }
+
                     set_nonblocking(new_fd);
 
 					// Initialize state for this new client
@@ -149,6 +170,7 @@ int main() {
                     event.data.fd = new_fd;
                     event.events = EPOLLIN | EPOLLONESHOT;
                     epoll_ctl(efd, EPOLL_CTL_ADD, new_fd, &event);
+                    active_connections++;
                 }
             }
 
@@ -159,7 +181,7 @@ int main() {
                 int bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
 
                 if (bytes_read <= 0) {
-                    close(client_fd);
+                    close_client(client_fd, &active_connections);
                     continue;
                 }
                 
@@ -192,7 +214,7 @@ int main() {
                     epoll_ctl(efd, EPOLL_CTL_MOD, client_fd, &event);
                     
                 } else {
-                    close(client_fd);
+                    close_client(client_fd, &active_connections);
                 }
             }	
             
@@ -224,7 +246,7 @@ int main() {
                     close(file_fd);
                 }
 
-                close(client_fd);
+                close_client(client_fd, &active_connections);
             }
         }
     }
