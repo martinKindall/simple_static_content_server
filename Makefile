@@ -3,6 +3,7 @@ CC = gcc
 TARGET = server
 
 SRCS = server.c
+HDRS = utils.h
 
 # Compilation Flags
 # -std=c23: The latest C standard
@@ -15,7 +16,7 @@ LDFLAGS = -fsanitize=address,undefined
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS)
+$(TARGET): $(SRCS) $(HDRS)
 	$(CC) $(CFLAGS) $(SRCS) -o $(TARGET) $(LDFLAGS)
 
 .PHONY: all clean
