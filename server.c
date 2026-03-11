@@ -19,6 +19,87 @@
 #define MAXEVENTS 64
 #define MAX_CONNECTIONS 500
 
+typedef struct {
+    int status;
+    int sockfd;
+} BindResult;
+
+typedef struct {
+    int file_fd;
+    int is_redirect;
+} ClientState;
+
+typedef struct {
+    int status;
+    int efd;
+    struct epoll_event event;
+    struct epoll_event *events;
+} EpollSetup;
+
+void close_client(int fd, int *connections);
+
+BindResult setup_and_bind();
+
+EpollSetup setup_epoll(int sockfd);
+
+int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
+                          ClientState client_states[], int active_connections);
+
+void handle_epollin(int client_fd, int efd, struct epoll_event *event,
+                    ClientState client_states[], int *active_connections);
+
+void handle_epollout(int client_fd, ClientState client_states[], int *active_connections);
+
+int main() {
+    BindResult bind_result = setup_and_bind();
+    if (bind_result.status != 0) return bind_result.status;
+    int sockfd = bind_result.sockfd;
+
+    EpollSetup epoll_setup = setup_epoll(sockfd);
+    if (epoll_setup.status != 0) return epoll_setup.status;
+
+    ClientState client_states[1024];
+    memset(client_states, 0, sizeof(client_states));
+
+    int active_connections = 0;
+
+    printf("server: waiting for connections via epoll...\n");
+
+    // 3. The Event Loop
+    while(1) {
+        int n = epoll_wait(epoll_setup.efd, epoll_setup.events, MAXEVENTS, -1);
+
+        for (int i = 0; i < n; i++) {
+
+            if ((epoll_setup.events[i].events & EPOLLERR) || (epoll_setup.events[i].events & EPOLLHUP)) {
+                fprintf(stderr, "epoll error\n");
+                if (epoll_setup.events[i].data.fd != sockfd)
+                    close_client(epoll_setup.events[i].data.fd, &active_connections);
+                else
+                    close(epoll_setup.events[i].data.fd);
+                continue;
+            }
+
+            // INCOMING CONNECTION ON LISTENING SOCKET
+            if (epoll_setup.events[i].data.fd == sockfd) {
+                active_connections = handle_new_connection(sockfd, epoll_setup.efd, &epoll_setup.event, client_states, active_connections);
+            }
+
+            else if (epoll_setup.events[i].events & EPOLLIN) {
+                handle_epollin(epoll_setup.events[i].data.fd, epoll_setup.efd, &epoll_setup.event, client_states, &active_connections);
+            }
+
+            else if (epoll_setup.events[i].events & EPOLLOUT) {
+                handle_epollout(epoll_setup.events[i].data.fd, client_states, &active_connections);
+            }
+        }
+    }
+
+    free(epoll_setup.events);
+    close(sockfd);
+    return 0;
+}
+
 void close_client(int fd, int *connections) {
     (*connections)--;
 
@@ -26,11 +107,6 @@ void close_client(int fd, int *connections) {
 
     close(fd);
 }
-
-typedef struct {
-    int status;
-    int sockfd;
-} BindResult;
 
 BindResult setup_and_bind() {
     BindResult result = {0, -1};
@@ -91,18 +167,27 @@ BindResult setup_and_bind() {
     return result;
 }
 
-typedef struct {
-    int file_fd;
-    int is_redirect;
-} ClientState;
+EpollSetup setup_epoll(int sockfd) {
+    EpollSetup result = {0, -1, {0}, NULL};
 
-void handle_epollin(int client_fd, int efd, struct epoll_event *event,
-                    ClientState client_states[], int *active_connections);
+    result.efd = epoll_create1(0);
+    if (result.efd == -1) {
+        perror("epoll_create1");
+        result.status = 1;
+        return result;
+    }
 
-void handle_epollout(int client_fd, ClientState client_states[], int *active_connections);
+    result.events = calloc(MAXEVENTS, sizeof(struct epoll_event));
+
+    result.event.data.fd = sockfd;
+    result.event.events = EPOLLIN;
+    epoll_ctl(result.efd, EPOLL_CTL_ADD, sockfd, &result.event);
+
+    return result;
+}
 
 int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
-        ClientState client_states[], int active_connections) {
+                          ClientState client_states[], int active_connections) {
     struct sockaddr_storage their_addr;
     socklen_t sin_size;
     char s[INET6_ADDRSTRLEN];
@@ -140,69 +225,6 @@ int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
     }
 
     return active_connections;
-}
-
-int main() {
-    BindResult bind_result = setup_and_bind();
-    if (bind_result.status != 0) return bind_result.status;
-    int sockfd = bind_result.sockfd;
-
-    // 2. Setup epoll
-    int efd = epoll_create1(0);
-    if (efd == -1) {
-        perror("epoll_create1");
-        exit(1);
-    }
-
-    struct epoll_event event;
-    struct epoll_event *events = calloc(MAXEVENTS, sizeof event);
-
-    // Register the listening socket to monitor for incoming connections (EPOLLIN)
-    event.data.fd = sockfd;
-    event.events = EPOLLIN; 
-    epoll_ctl(efd, EPOLL_CTL_ADD, sockfd, &event);
-
-    ClientState client_states[1024];
-
-    memset(client_states, 0, sizeof(client_states));
-
-    int active_connections = 0;
-
-    printf("server: waiting for connections via epoll...\n");
-
-    // 3. The Event Loop
-    while(1) {
-        int n = epoll_wait(efd, events, MAXEVENTS, -1);
-        
-        for (int i = 0; i < n; i++) {
-            
-            if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
-                fprintf(stderr, "epoll error\n");
-                if (events[i].data.fd != sockfd)
-                    close_client(events[i].data.fd, &active_connections);
-                else
-                    close(events[i].data.fd);
-                continue;
-            }
-
-            // INCOMING CONNECTION ON LISTENING SOCKET
-            if (events[i].data.fd == sockfd) {
-                active_connections = handle_new_connection(sockfd, efd, &event, client_states, active_connections);
-            }
-
-            else if (events[i].events & EPOLLIN) {
-                handle_epollin(events[i].data.fd, efd, &event, client_states, &active_connections);
-            }
-            
-            else if (events[i].events & EPOLLOUT) {
-                handle_epollout(events[i].data.fd, client_states, &active_connections);
-            }
-        }
-    }
-
-    free(events);
-    close(sockfd);
-    return 0;
 }
 
 void handle_epollout(int client_fd, ClientState client_states[], int *active_connections) {

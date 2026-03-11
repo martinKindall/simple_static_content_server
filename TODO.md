@@ -9,4 +9,5 @@
     2.3.2 Then move to a function the if clause which does the EPOLLIN, the one that reads the request.
     2.3.3 Finally move to a function the if clause which does the EPOLLOUT, the one that sends the file to the client. 
 3. Fix this bug: for big files, sendfile() does not write everything in one go to the client, meaning we do not need to close immediately the connection. We need to keep track of the offset, feel free to modify existing client datastructure if it helps to track state and close connection only when the whole file was written.
-   
+4. Before the event loop, in server.c, there is the configuration of the event fd and the event shared struct and the events allocated memory. Do all of these related event initializations in a function, and return a struct which groups all of them, which will be used in the event loop.
+    
