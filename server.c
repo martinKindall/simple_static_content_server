@@ -27,16 +27,18 @@ void close_client(int fd, int *connections) {
     close(fd);
 }
 
-int main() {
-    int sockfd, new_fd;
+typedef struct {
+    int status;
+    int sockfd;
+} BindResult;
+
+BindResult setup_and_bind() {
+    BindResult result = {0, -1};
     struct addrinfo hints, *servinfo, *p;
-    struct sockaddr_storage their_addr;
-    socklen_t sin_size;
+    int sockfd;
     int yes = 1;
-    char s[INET6_ADDRSTRLEN];
     int rv;
 
-    // 1. Standard Socket Setup (Same as before)
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -44,7 +46,8 @@ int main() {
 
     if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        return 1;
+        result.status = 1;
+        return result;
     }
 
     for (p = servinfo; p != NULL; p = p->ai_next) {
@@ -55,7 +58,9 @@ int main() {
 
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
             perror("setsockopt");
-            exit(1);
+            freeaddrinfo(servinfo);
+            result.status = 1;
+            return result;
         }
 
         if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -70,16 +75,31 @@ int main() {
 
     if (p == NULL) {
         fprintf(stderr, "server: failed to bind\n");
-        exit(1);
+        result.status = 1;
+        return result;
     }
 
-    // Make the listening socket non-blocking
     set_nonblocking(sockfd);
 
     if (listen(sockfd, BACKLOG) == -1) {
         perror("listen");
-        exit(1);
+        result.status = 1;
+        return result;
     }
+
+    result.sockfd = sockfd;
+    return result;
+}
+
+int main() {
+    BindResult bind_result = setup_and_bind();
+    if (bind_result.status != 0) return bind_result.status;
+    int sockfd = bind_result.sockfd;
+
+    int new_fd;
+    struct sockaddr_storage their_addr;
+    socklen_t sin_size;
+    char s[INET6_ADDRSTRLEN];
 
     // 2. Setup epoll
     int efd = epoll_create1(0);
