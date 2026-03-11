@@ -2,7 +2,7 @@ CC = gcc
 
 TARGET = server
 
-SRCS = server.c
+SRCS = server.c utils.c
 HDRS = utils.h
 
 # Compilation Flags
