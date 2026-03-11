@@ -68,7 +68,6 @@ int main() {
 
     printf("server: waiting for connections via epoll...\n");
 
-    // 3. The Event Loop
     while(1) {
         int n = epoll_wait(epoll_setup.efd, epoll_setup.events, MAXEVENTS, -1);
 
@@ -83,7 +82,6 @@ int main() {
                 continue;
             }
 
-            // INCOMING CONNECTION ON LISTENING SOCKET
             if (epoll_setup.events[i].data.fd == sockfd) {
                 active_connections = handle_new_connection(sockfd, epoll_setup.efd, &epoll_setup.event, client_states, active_connections);
             }
