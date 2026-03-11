@@ -91,15 +91,56 @@ BindResult setup_and_bind() {
     return result;
 }
 
+typedef struct {
+    int file_fd;
+    int is_redirect;
+} ClientState;
+
+int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
+        ClientState client_states[], int active_connections) {
+    struct sockaddr_storage their_addr;
+    socklen_t sin_size;
+    char s[INET6_ADDRSTRLEN];
+    int new_fd;
+
+    while (1) {
+        sin_size = sizeof their_addr;
+        new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+
+        if (new_fd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            perror("accept");
+            break;
+        }
+
+        inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
+        printf("server: got connection from %s\n", s);
+
+        if (active_connections >= MAX_CONNECTIONS) {
+            char *response = "HTTP/1.1 529 Too Many Requests\r\nConnection: close\r\n\r\n";
+            send(new_fd, response, strlen(response), 0);
+            close(new_fd);
+            continue;
+        }
+
+        set_nonblocking(new_fd);
+
+        client_states[new_fd].file_fd = -1;
+        client_states[new_fd].is_redirect = 0;
+
+        event->data.fd = new_fd;
+        event->events = EPOLLIN | EPOLLONESHOT;
+        epoll_ctl(efd, EPOLL_CTL_ADD, new_fd, event);
+        active_connections++;
+    }
+
+    return active_connections;
+}
+
 int main() {
     BindResult bind_result = setup_and_bind();
     if (bind_result.status != 0) return bind_result.status;
     int sockfd = bind_result.sockfd;
-
-    int new_fd;
-    struct sockaddr_storage their_addr;
-    socklen_t sin_size;
-    char s[INET6_ADDRSTRLEN];
 
     // 2. Setup epoll
     int efd = epoll_create1(0);
@@ -116,10 +157,7 @@ int main() {
     event.events = EPOLLIN; 
     epoll_ctl(efd, EPOLL_CTL_ADD, sockfd, &event);
 
-	struct {
-        int file_fd;
-        int is_redirect;
-    } client_states[1024];
+    ClientState client_states[1024];
 
     memset(client_states, 0, sizeof(client_states));
 
@@ -144,41 +182,7 @@ int main() {
 
             // INCOMING CONNECTION ON LISTENING SOCKET
             if (events[i].data.fd == sockfd) {
-                while(1) {
-                    sin_size = sizeof their_addr;
-                    new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-                    
-                    if (new_fd == -1) {
-                        // EAGAIN means we have accepted all pending connections
-                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                            break; 
-                        }
-                        perror("accept");
-                        break;
-                    }
-
-                    inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-                    printf("server: got connection from %s\n", s);
-
-                    if (active_connections >= MAX_CONNECTIONS) {
-                        char *response = "HTTP/1.1 529 Too Many Requests\r\nConnection: close\r\n\r\n";
-                        send(new_fd, response, strlen(response), 0);
-                        close(new_fd);
-                        continue;
-                    }
-
-                    set_nonblocking(new_fd);
-
-					// Initialize state for this new client
-                    client_states[new_fd].file_fd = -1;
-                    client_states[new_fd].is_redirect = 0;
-
-                    // Add to epoll, waiting to READ the request first (EPOLLIN)
-                    event.data.fd = new_fd;
-                    event.events = EPOLLIN | EPOLLONESHOT;
-                    epoll_ctl(efd, EPOLL_CTL_ADD, new_fd, &event);
-                    active_connections++;
-                }
+                active_connections = handle_new_connection(sockfd, efd, &event, client_states, active_connections);
             }
 
             else if (events[i].events & EPOLLIN) {
