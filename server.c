@@ -27,6 +27,8 @@ typedef struct {
 typedef struct {
     int file_fd;
     int is_redirect;
+    off_t offset;
+    off_t file_size;
 } ClientState;
 
 typedef struct {
@@ -48,7 +50,8 @@ int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
 void parse_request(int client_fd, int efd, struct epoll_event *event,
                     ClientState client_states[], int *active_connections);
 
-void send_response(int client_fd, ClientState client_states[], int *active_connections);
+void send_response(int client_fd, int efd, struct epoll_event *event,
+                   ClientState client_states[], int *active_connections);
 
 int main() {
     BindResult bind_result = setup_and_bind();
@@ -90,7 +93,7 @@ int main() {
             }
 
             else if (epoll_setup.events[i].events & EPOLLOUT) {
-                send_response(epoll_setup.events[i].data.fd, client_states, &active_connections);
+                send_response(epoll_setup.events[i].data.fd, epoll_setup.efd, &epoll_setup.event, client_states, &active_connections);
             }
         }
     }
@@ -217,6 +220,8 @@ int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
 
         client_states[new_fd].file_fd = -1;
         client_states[new_fd].is_redirect = 0;
+        client_states[new_fd].offset = 0;
+        client_states[new_fd].file_size = 0;
 
         event->data.fd = new_fd;
         event->events = EPOLLIN | EPOLLONESHOT;
@@ -227,32 +232,41 @@ int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
     return active_connections;
 }
 
-void send_response(int client_fd, ClientState client_states[], int *active_connections) {
+void send_response(int client_fd, int efd, struct epoll_event *event,
+                   ClientState client_states[], int *active_connections) {
     if (client_states[client_fd].is_redirect) {
         char *redirect = "HTTP/1.1 302 Found\r\nLocation: /\r\nConnection: close\r\n\r\n";
         send(client_fd, redirect, strlen(redirect), 0);
-    } else {
-        int file_fd = client_states[client_fd].file_fd;
+        close_client(client_fd, active_connections);
+        return;
+    }
 
-        struct stat stat_buf;
-        fstat(file_fd, &stat_buf);
+    int file_fd = client_states[client_fd].file_fd;
+    off_t file_size = client_states[client_fd].file_size;
 
+    if (client_states[client_fd].offset == 0) {
         char headers[256];
         int header_len = snprintf(headers, sizeof(headers),
             "HTTP/1.1 200 OK\r\n"
             "Content-Length: %ld\r\n"
             "Connection: close\r\n\r\n",
-            (long)stat_buf.st_size);
-
+            (long)file_size);
         send(client_fd, headers, header_len, 0);
-
-        off_t offset = 0;
-        sendfile(client_fd, file_fd, &offset, stat_buf.st_size);
-
-        close(file_fd);
     }
 
-    close_client(client_fd, active_connections);
+    sendfile(client_fd, file_fd, &client_states[client_fd].offset,
+             file_size - client_states[client_fd].offset);
+
+    if (client_states[client_fd].offset >= file_size) {
+        close(file_fd);
+        close_client(client_fd, active_connections);
+    } else {
+        printf("send_response: partial send, offset %ld of %ld, re-arming fd %d\n",
+               (long)client_states[client_fd].offset, (long)file_size, client_fd);
+        event->data.fd = client_fd;
+        event->events = EPOLLOUT | EPOLLONESHOT;
+        epoll_ctl(efd, EPOLL_CTL_MOD, client_fd, event);
+    }
 }
 
 void parse_request(int client_fd, int efd, struct epoll_event *event,
@@ -281,7 +295,11 @@ void parse_request(int client_fd, int efd, struct epoll_event *event,
         if (file_fd == -1) {
             client_states[client_fd].is_redirect = 1;
         } else {
+            struct stat stat_buf;
+            fstat(file_fd, &stat_buf);
             client_states[client_fd].file_fd = file_fd;
+            client_states[client_fd].offset = 0;
+            client_states[client_fd].file_size = stat_buf.st_size;
         }
 
         event->data.fd = client_fd;
