@@ -99,6 +99,8 @@ typedef struct {
 void handle_epollin(int client_fd, int efd, struct epoll_event *event,
                     ClientState client_states[], int *active_connections);
 
+void handle_epollout(int client_fd, ClientState client_states[], int *active_connections);
+
 int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
         ClientState client_states[], int active_connections) {
     struct sockaddr_storage their_addr;
@@ -193,34 +195,7 @@ int main() {
             }
             
             else if (events[i].events & EPOLLOUT) {
-                int client_fd = events[i].data.fd;
-
-                if (client_states[client_fd].is_redirect) {
-                    char *redirect = "HTTP/1.1 302 Found\r\nLocation: /\r\nConnection: close\r\n\r\n";
-                    send(client_fd, redirect, strlen(redirect), 0);
-                }
-                else {
-                    int file_fd = client_states[client_fd].file_fd;
-
-                    struct stat stat_buf;
-                    fstat(file_fd, &stat_buf);
-
-                    char headers[256];
-                    int header_len = snprintf(headers, sizeof(headers),
-                        "HTTP/1.1 200 OK\r\n"
-                        "Content-Length: %ld\r\n"
-                        "Connection: close\r\n\r\n",
-                        (long)stat_buf.st_size);
-
-                    send(client_fd, headers, header_len, 0);
-
-                    off_t offset = 0;
-                    sendfile(client_fd, file_fd, &offset, stat_buf.st_size);
-
-                    close(file_fd);
-                }
-
-                close_client(client_fd, &active_connections);
+                handle_epollout(events[i].data.fd, client_states, &active_connections);
             }
         }
     }
@@ -228,6 +203,34 @@ int main() {
     free(events);
     close(sockfd);
     return 0;
+}
+
+void handle_epollout(int client_fd, ClientState client_states[], int *active_connections) {
+    if (client_states[client_fd].is_redirect) {
+        char *redirect = "HTTP/1.1 302 Found\r\nLocation: /\r\nConnection: close\r\n\r\n";
+        send(client_fd, redirect, strlen(redirect), 0);
+    } else {
+        int file_fd = client_states[client_fd].file_fd;
+
+        struct stat stat_buf;
+        fstat(file_fd, &stat_buf);
+
+        char headers[256];
+        int header_len = snprintf(headers, sizeof(headers),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Length: %ld\r\n"
+            "Connection: close\r\n\r\n",
+            (long)stat_buf.st_size);
+
+        send(client_fd, headers, header_len, 0);
+
+        off_t offset = 0;
+        sendfile(client_fd, file_fd, &offset, stat_buf.st_size);
+
+        close(file_fd);
+    }
+
+    close_client(client_fd, active_connections);
 }
 
 void handle_epollin(int client_fd, int efd, struct epoll_event *event,
