@@ -96,6 +96,9 @@ typedef struct {
     int is_redirect;
 } ClientState;
 
+void handle_epollin(int client_fd, int efd, struct epoll_event *event,
+                    ClientState client_states[], int *active_connections);
+
 int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
         ClientState client_states[], int active_connections) {
     struct sockaddr_storage their_addr;
@@ -186,48 +189,8 @@ int main() {
             }
 
             else if (events[i].events & EPOLLIN) {
-                int client_fd = events[i].data.fd;
-                char buffer[2048];
-                
-                int bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-
-                if (bytes_read <= 0) {
-                    close_client(client_fd, &active_connections);
-                    continue;
-                }
-                
-                buffer[bytes_read] = '\0'; 
-
-                // Parse the request line (e.g., "GET /about.html HTTP/1.1")
-                char method[16], path[256], protocol[16];
-                if (sscanf(buffer, "%15s %255s %15s", method, path, protocol) == 3) {
-                    
-                    char filename[256];
-                    
-                    if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
-                        strcpy(filename, "index.html");
-                    } 
-                    else {
-                        // Skip the leading slash (e.g., "/about.html" -> "about.html")
-                        strcpy(filename, path + 1);
-                    }
-
-                    int file_fd = open(filename, O_RDONLY);
-                    if (file_fd == -1) {
-                        // File doesn't exist. Mark this client for a redirect.
-                        client_states[client_fd].is_redirect = 1;
-                    } else {
-                        client_states[client_fd].file_fd = file_fd;
-                    }
-
-                    event.data.fd = client_fd;
-                    event.events = EPOLLOUT | EPOLLONESHOT;
-                    epoll_ctl(efd, EPOLL_CTL_MOD, client_fd, &event);
-                    
-                } else {
-                    close_client(client_fd, &active_connections);
-                }
-            }	
+                handle_epollin(events[i].data.fd, efd, &event, client_states, &active_connections);
+            }
             
             else if (events[i].events & EPOLLOUT) {
                 int client_fd = events[i].data.fd;
@@ -267,3 +230,39 @@ int main() {
     return 0;
 }
 
+void handle_epollin(int client_fd, int efd, struct epoll_event *event,
+                    ClientState client_states[], int *active_connections) {
+    char buffer[2048];
+    int bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+
+    if (bytes_read <= 0) {
+        close_client(client_fd, active_connections);
+        return;
+    }
+
+    buffer[bytes_read] = '\0';
+
+    char method[16], path[256], protocol[16];
+    if (sscanf(buffer, "%15s %255s %15s", method, path, protocol) == 3) {
+        char filename[256];
+
+        if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
+            strcpy(filename, "index.html");
+        } else {
+            strcpy(filename, path + 1);
+        }
+
+        int file_fd = open(filename, O_RDONLY);
+        if (file_fd == -1) {
+            client_states[client_fd].is_redirect = 1;
+        } else {
+            client_states[client_fd].file_fd = file_fd;
+        }
+
+        event->data.fd = client_fd;
+        event->events = EPOLLOUT | EPOLLONESHOT;
+        epoll_ctl(efd, EPOLL_CTL_MOD, client_fd, event);
+    } else {
+        close_client(client_fd, active_connections);
+    }
+}
