@@ -45,10 +45,10 @@ EpollSetup setup_epoll(int sockfd);
 int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
                           ClientState client_states[], int active_connections);
 
-void handle_epollin(int client_fd, int efd, struct epoll_event *event,
+void parse_request(int client_fd, int efd, struct epoll_event *event,
                     ClientState client_states[], int *active_connections);
 
-void handle_epollout(int client_fd, ClientState client_states[], int *active_connections);
+void send_response(int client_fd, ClientState client_states[], int *active_connections);
 
 int main() {
     BindResult bind_result = setup_and_bind();
@@ -86,11 +86,11 @@ int main() {
             }
 
             else if (epoll_setup.events[i].events & EPOLLIN) {
-                handle_epollin(epoll_setup.events[i].data.fd, epoll_setup.efd, &epoll_setup.event, client_states, &active_connections);
+                parse_request(epoll_setup.events[i].data.fd, epoll_setup.efd, &epoll_setup.event, client_states, &active_connections);
             }
 
             else if (epoll_setup.events[i].events & EPOLLOUT) {
-                handle_epollout(epoll_setup.events[i].data.fd, client_states, &active_connections);
+                send_response(epoll_setup.events[i].data.fd, client_states, &active_connections);
             }
         }
     }
@@ -227,7 +227,7 @@ int handle_new_connection(int sockfd, int efd, struct epoll_event *event,
     return active_connections;
 }
 
-void handle_epollout(int client_fd, ClientState client_states[], int *active_connections) {
+void send_response(int client_fd, ClientState client_states[], int *active_connections) {
     if (client_states[client_fd].is_redirect) {
         char *redirect = "HTTP/1.1 302 Found\r\nLocation: /\r\nConnection: close\r\n\r\n";
         send(client_fd, redirect, strlen(redirect), 0);
@@ -255,7 +255,7 @@ void handle_epollout(int client_fd, ClientState client_states[], int *active_con
     close_client(client_fd, active_connections);
 }
 
-void handle_epollin(int client_fd, int efd, struct epoll_event *event,
+void parse_request(int client_fd, int efd, struct epoll_event *event,
                     ClientState client_states[], int *active_connections) {
     char buffer[2048];
     int bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
