@@ -1,4 +1,7 @@
 server
 *.swp
 *.jpg
+infra/.terraform/
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
 

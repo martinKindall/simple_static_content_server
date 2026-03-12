@@ -12,3 +12,10 @@
 4. Before the event loop, in server.c, there is the configuration of the event fd and the event shared struct and the events allocated memory. Do all of these related event initializations in a function, and return a struct which groups all of them, which will be used in the event loop.
 5. Add a .js file and add to the UI a button that when clicked displays the current time, using js logic. The time must update every second. Add also some styling to the button. It must also display the time zone associated.
 
+
+### Infrastructure 
+
+1. Use Terraform and generate file(s) using AWS provider to launch a t3 micro in eu-central-1 using the ami linux 2023 image. 
+  1.1 Network settings: default vpc, availability zone eu-central-1a, auto-assign public ip.
+  1.2 Attach to it a new security group that allows traffic from anywhere. incoming ssh and http on port 80. Require a key pair login, the key already exist and is called frankfurt\_v2.pem. Storage just default configs.
+  
