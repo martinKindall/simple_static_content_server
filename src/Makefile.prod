@@ -1,0 +1,18 @@
+CC = gcc
+
+TARGET = server
+
+SRCS = server.c utils.c
+HDRS = utils.h
+
+CFLAGS = -std=gnu2x -Wall -Wextra -O2
+
+all: $(TARGET)
+
+$(TARGET): $(SRCS) $(HDRS)
+	$(CC) $(CFLAGS) $(SRCS) -o $(TARGET)
+
+.PHONY: all clean
+
+clean:
+	rm -f $(TARGET)
