@@ -1,0 +1,81 @@
+---
+- name: Deploy static server
+  hosts: web
+  become: yes
+
+  tasks:
+    - name: Install build dependencies
+      dnf:
+        name:
+          - gcc
+          - make
+          - git
+        state: present
+
+    - name: Clone or update repo
+      git:
+        repo: https://github.com/martinKindall/simple_static_content_server.git
+        dest: /home/ec2-user/app
+        update: yes
+      become_user: ec2-user
+
+    - name: Copy wallpaper to remote public folder
+      copy:
+        src: ../src/public/wallpaper.jpg
+        dest: /home/ec2-user/app/src/public/wallpaper.jpg
+        owner: ec2-user
+        group: ec2-user
+        mode: '0644'
+
+    - name: Compile server
+      command: make -f Makefile.prod
+      args:
+        chdir: /home/ec2-user/app/src
+      notify: Restart static-server
+
+    - name: Install systemd unit
+      copy:
+        dest: /etc/systemd/system/static-server.service
+        content: |
+          [Unit]
+          Description=Simple Static Content Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=ec2-user
+          WorkingDirectory=/home/ec2-user/app/src
+          ExecStart=/home/ec2-user/app/src/server
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start static-server
+      systemd:
+        name: static-server
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Forward port 80 to 3490
+      iptables:
+        table: nat
+        chain: PREROUTING
+        protocol: tcp
+        destination_port: 80
+        jump: REDIRECT
+        to_ports: 3490
+        state: present
+
+    - name: Persist iptables rules
+      shell: iptables-save > /etc/sysconfig/iptables
+      args:
+        creates: /etc/sysconfig/iptables
+
+  handlers:
+    - name: Restart static-server
+      systemd:
+        name: static-server
+        state: restarted
+        daemon_reload: yes

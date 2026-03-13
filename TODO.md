@@ -24,3 +24,9 @@
 ### Ansible
 
 1. Generate an Ansible playbook to manage the t3 instance mentioned in the Infrastructure section of this document and to deploy the source code in the src/ folder.
+  1.1 Login to a remote public IP I'll feed to you later via ssh using a .pem file located in /home/walruscode/informatica/frankfurt\_v2.pem
+  1.2 Install the necessary tools to compile and run the server.c program. At least it will need _gcc_ and _make_.
+  1.3 Install git to be able to pull the repository from https://github.com/martinKindall/simple\_static\_content\_server.git
+  1.4 Pull the repo, go to src/ folder within, 
+  1.5 Copy an image from this project (local, not the remote), under ./src/public/wallpaper.jpg and send it to the remote app/src/public/ folder. 
+  1.6 make using Makefile.prod and run server.
