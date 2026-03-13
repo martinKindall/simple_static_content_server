@@ -1,4 +1,4 @@
-## TODO
+## Simple Static Content Server
 
-- Serve static html files with js, css and images. Check if the current implementation already supports this.
+Serve your files like .html, .js, .css, .jpg and more either in you localhost or on the internet with this C implementation.
 
