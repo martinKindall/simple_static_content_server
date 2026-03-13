@@ -10,7 +10,7 @@ HDRS = utils.h
 # -Wall -Wextra: Enable common warning flags
 # -g: Include debug information 
 # -fsanitize=address,undefined: Enable ASan and UBSan 
-CFLAGS = -std=gnu23 -Wall -Wextra -g -fsanitize=address,undefined
+CFLAGS = -std=gnu2x -Wall -Wextra -g -fsanitize=address,undefined
 
 LDFLAGS = -fsanitize=address,undefined
 
