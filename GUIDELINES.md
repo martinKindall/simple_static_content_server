@@ -8,3 +8,8 @@
   - method definitions without body (if any)
   - main method with body
   - method implementations
+
+## Claude code
+
+1. Read .gitignore and also ignore these files when exploring the project with "tree" or similar commands.
+
