@@ -284,9 +284,9 @@ void parse_request(int client_fd, int efd, struct epoll_event *event,
         char filename[256];
 
         if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
-            strcpy(filename, "index.html");
+            strcpy(filename, "public/index.html");
         } else {
-            strcpy(filename, path + 1);
+            snprintf(filename, sizeof(filename), "public/%s", path + 1);
         }
 
         int file_fd = open(filename, O_RDONLY);

@@ -11,6 +11,7 @@
 3. Fix this bug: for big files, sendfile() does not write everything in one go to the client, meaning we do not need to close immediately the connection. We need to keep track of the offset, feel free to modify existing client datastructure if it helps to track state and close connection only when the whole file was written.
 4. Before the event loop, in server.c, there is the configuration of the event fd and the event shared struct and the events allocated memory. Do all of these related event initializations in a function, and return a struct which groups all of them, which will be used in the event loop.
 5. Add a .js file and add to the UI a button that when clicked displays the current time, using js logic. The time must update every second. Add also some styling to the button. It must also display the time zone associated.
+6. Now the source code has been moved to the src/ folder, and the static content to src/public/. Modify the server.c file accordingly, so the files can be found within src/public/.
 
 
 ### Infrastructure 
@@ -18,4 +19,8 @@
 1. Use Terraform and generate file(s) using AWS provider to launch a t3 micro in eu-central-1 using the ami linux 2023 image. 
   1.1 Network settings: default vpc, availability zone eu-central-1a, auto-assign public ip.
   1.2 Attach to it a new security group that allows traffic from anywhere. incoming ssh and http on port 80. Require a key pair login, the key already exist and is called frankfurt\_v2.pem. Storage just default configs.
-  
+
+
+### Ansible
+
+1. Generate an Ansible playbook to manage the t3 instance mentioned in the Infrastructure section of this document and to deploy the source code in the src/ folder.
