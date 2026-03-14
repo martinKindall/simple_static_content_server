@@ -8,8 +8,8 @@ terraform {
 }
 
 provider "aws" {
-  region  = "eu-central-1"
-  profile = "macornejo"
+  region  = var.region
+  profile = var.profile
 }
 
 data "aws_vpc" "default" {
@@ -28,7 +28,7 @@ data "aws_ami" "al2023" {
 
 data "aws_subnet" "default_az" {
   vpc_id            = data.aws_vpc.default.id
-  availability_zone = "eu-central-1a"
+  availability_zone = var.availability_zone
   default_for_az    = true
 }
 
@@ -61,9 +61,9 @@ resource "aws_security_group" "web_ssh" {
 resource "aws_instance" "web" {
   ami                         = data.aws_ami.al2023.id
   instance_type               = "t3.micro"
-  availability_zone           = "eu-central-1a"
+  availability_zone           = var.availability_zone
   associate_public_ip_address = true
-  key_name                    = "frankfurt_v2"
+  key_name                    = var.key_name
   vpc_security_group_ids      = [aws_security_group.web_ssh.id]
   subnet_id                   = data.aws_subnet.default_az.id
 }
