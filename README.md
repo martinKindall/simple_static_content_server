@@ -32,8 +32,8 @@ Instructions:
 
 - This project runs in eu-central-1.
 - Make sure you are logged in with your aws cli, either with your sso account or with a valid aws profile.
-- Generate a .pem file in eu-central-1 for EC2 instances.
-- Modify __infra/main.tf__ and replace the __profile__ name with your profile, and the pem key name for your pem key.
+- Generate a .pem file in your prefered region for EC2 instances.
+- Modify __infra/terraform.tfvars__ according to your preferences.
 
 Run terraform:
 
@@ -47,8 +47,7 @@ terraform apply
 Once the changes are applied, you will see your instance being created on AWS Console. Wait a couple of minutes until the instance is ready. Note down its public ip as we will need it in the next step.
 
 Ansible instructions:
-- Modify __ansible.cfg__: private key file must point to your .pem in your local machine. Mine is called frankfurt, but you must use your own.
-- Modify __inventory.ini__: under __web__, put the public ip of your EC2 instance.
+- Modify __inventory.ini__: Put the ip you got from the previous step. Also private key file must point to your .pem in your local machine. Mine is called frankfurt, but you must use your own. The ec2-user is the default AMI Linux user and you can leave it.
 
 Run:
 
@@ -59,7 +58,7 @@ ansible-playbook deploy.yml
 
 Now go to your public ip, using http (and not https!).
 
-http://<insert-public-ip>/index.html
+http://'''insert-public-ip'''/index.html
 
 and you should see the website, congratz!
 
